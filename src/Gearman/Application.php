@@ -293,7 +293,7 @@ class Application implements Serializable
     private function createLoop($restart = false)
     {
         $worker = $this->getWorker()->getWorker();
-        $worker->setTimeout(10);
+        $worker->addOptions(GEARMAN_WORKER_NON_BLOCKING);
 
         $callbacks = $this->getCallbacks();
 
@@ -306,17 +306,34 @@ class Application implements Serializable
         }
 
         $callbacksCount = count($callbacks);
-        while ($worker->work() || $worker->returnCode() == GEARMAN_TIMEOUT) {
-            if ($this->getKill()) {
-                break;
-            }
-
+        while (
+            !$this->getKill() && (
+                $worker->work() ||
+                $worker->returnCode() == GEARMAN_IO_WAIT ||
+                $worker->returnCode() == GEARMAN_NO_JOBS ||
+                $worker->returnCode() == GEARMAN_TIMEOUT
+            )
+        ) {
             pcntl_signal_dispatch();
 
             if ($callbacksCount) {
                 foreach ($callbacks as $callback) {
                     $callback($this);
                 }
+            }
+
+            if ($worker->returnCode() == GEARMAN_SUCCESS) {
+                continue;
+            }
+
+            if (!$worker->wait()) {
+                if ($worker->returnCode() == GEARMAN_NO_ACTIVE_FDS) {
+                    sleep(5);
+                    continue;
+                } elseif ($worker->returnCode() == GEARMAN_TIMEOUT) {
+                    continue;
+                }
+                break;
             }
         }
 
