@@ -318,6 +318,8 @@ class Application implements Serializable
                     $callback($this);
                 }
             }
+
+            usleep(50000);
         }
 
         if (!$this->getKill() && $worker instanceof \GearmanWorker) {
